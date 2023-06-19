@@ -56,8 +56,12 @@ if os.getenv('CONSUL') != None:
 else: 
     CONSUL=get_default_gateway_linux()
 
+if os.getenv('HOSTNAME') != None:
+    HOSTNAME = os.getenv('HOSTNAME')
+else: 
+    HOSTNAME=get_ip()
+
 BASE_CONSUL_URL = 'http://' +  CONSUL + ':8500'
-HOSTNAME = os.getenv('HOSTNAME')
 
 config = {'default':'config'}
 prev_config = {'default':'config'}
@@ -65,7 +69,7 @@ changed = 0
 SERVICE_ADDRESS = get_ip()
 
 PORT = 8080 
-UUID=str(uuid.uuid5(uuid.NAMESPACE_DNS, str(SERVICE_ADDRESS) + ":" + str(PORT) + ":" + HOSTNAME))
+UUID=str(uuid.uuid5(uuid.NAMESPACE_DNS, f'{SERVICE_ADDRESS}:{PORT}:{HOSTNAME}'))
 
 c = consul.Consul(host=CONSUL)
 
@@ -107,7 +111,7 @@ def hello_world():
 
 @app.route('/register')
 def register():
-    url = BASE_CONSUL_URL + '/v1/agent/service/register'
+    url = f'{BASE_CONSUL_URL}/v1/agent/service/register'
     data = {
         'Name': 'PythonApp',
         'ID': UUID,
@@ -115,20 +119,21 @@ def register():
         'Address': SERVICE_ADDRESS,
         'Port': PORT,
         'Check': {
-            'http': 'http://{address}:{port}/health'.format(address=SERVICE_ADDRESS, port=PORT),
+            'http': f'http://{SERVICE_ADDRESS}:{PORT}/health',
             'interval': '10s'
         }
     }
     res = requests.put(
-        url,
-        data=json.dumps(data)
+        url
+        , data=json.dumps(data)
+        , timeout=15
     )
     return res
 
 def cleanup():
     try:
         sleep(int(random.randrange(1,5)))
-        url = BASE_CONSUL_URL + '/v1/agent/service/deregister/' + UUID
+        url = f'{BASE_CONSUL_URL}/v1/agent/service/deregister/{UUID}'
         data = {
             'service_id': UUID,
         }
@@ -148,9 +153,10 @@ if __name__ == '__main__':
     status = ""
     while status != 200:
         try:
-            app.logger.debug(f'Registering on consul')
+            print(f'Registering on consul')
             status = register().status_code
             sleep(int(random.randrange(1,5)))
         except Exception as e:
-            app.logger.debug(f'ERROR::::: {e}')
+            print(f'ERROR::::: {e}')
+            sleep(int(random.randrange(1,5)))
     app.run(debug=True, host="0.0.0.0", port=PORT)
